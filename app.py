@@ -37,7 +37,6 @@ def fetch_opportunities():
     now = datetime.datetime.utcnow()
     signals = []
     coins = ["BTC", "ETH", "XRP", "ADA", "DOGE", "TRX", "SOL", "AVAX", "APT", "LTC"]
-    capital = 100.0  # Assume 100 USDT/USDC starting capital
 
     for _ in range(250):
         base = random.choice(["USDT", "USDC"])
@@ -53,34 +52,32 @@ def fetch_opportunities():
         # Exchange logic
         if trade_type == "In-Exchange Triangular Trades":
             exchange = random.choice(list(exchange_fees.keys()))
-        else:  # Cross-Exchange
+        else:
             exchange = random.choice(list(exchange_fees.keys())) + " ⇄ " + random.choice(list(exchange_fees.keys()))
 
-        gross_profit_percent = round(random.uniform(5000.0, 20000.0), 2)
+        gross_profit_percent = round(random.uniform(10000.0, 500000.0), 2)
         fee_percent = 0.3 if "⇄" in exchange else exchange_fees[exchange.split()[0]]
-        slippage = random.uniform(1.0, 3.0)
 
-        total_deduction = (3 * fee_percent) + slippage
+        slippage = round(random.uniform(0.05, 0.3), 2)  # Reduced slippage
+        total_fees = 3 * fee_percent
+        total_deduction = total_fees + slippage
         net_profit_percent = round(gross_profit_percent - total_deduction, 2)
 
-        net_profit_usd = round(capital * net_profit_percent / 100, 2)
-        total_after_trade = capital + net_profit_usd
-
-        slippage_risk = "✅ Low" if net_profit_usd > 0 else "❌ High"
+        slippage_risk = "✅ Low" if net_profit_percent > 0 else "❌ High"
 
         valid_minutes = random.randint(3, 15)
         valid_until = (now + datetime.timedelta(minutes=valid_minutes)).strftime("%H:%M:%S UTC")
 
-        if 5000.0 <= net_profit_percent <= 10000000.0:
+        if 10000.0 <= net_profit_percent <= 1000000000.0:
             signals.append({
                 "Exchange": exchange,
                 "Trade 1": trade1,
                 "Trade 2": trade2,
                 "Trade 3": trade3,
                 "Gross Profit %": gross_profit_percent,
-                "Net Profit % (After Slippage)": net_profit_percent,
-                "Net Profit (on $100)": f"${net_profit_usd}",
-                "Final Amount": f"${total_after_trade}",
+                "Fees %": total_fees,
+                "Slippage %": slippage,
+                "Net Profit %": net_profit_percent,
                 "Slippage Risk": slippage_risk,
                 "Order 1": buy_order,
                 "Order 2": mid_order,
@@ -96,10 +93,10 @@ results = fetch_opportunities()
 
 if results:
     df = pd.DataFrame(results)
-    df = df.sort_values(by="Net Profit % (After Slippage)", ascending=False).reset_index(drop=True)
-    st.success(f"Found {len(df)} signals with Net Profit ≥ 5000%. Auto-refresh every 15s.")
+    df = df.sort_values(by="Net Profit %", ascending=False).reset_index(drop=True)
+    st.success(f"Found {len(df)} signals with Net Profit ≥ 10,000%. Auto-refresh every 15s.")
     st.dataframe(df, use_container_width=True)
 else:
-    st.warning("No arbitrage signals with Net Profit ≥ 5000% found.")
+    st.warning("No arbitrage signals with Net Profit ≥ 10,000% found.")
 
 st.caption("Updates every 15 seconds • Ends in USDT/USDC • In-Exchange & Cross-Exchange • Gaming UI • Slippage Simulation • Dark Mode")
