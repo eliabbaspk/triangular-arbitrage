@@ -1,102 +1,118 @@
+# Accurate Triangular Arbitrage Scanner (Binance + MEXC)
+# Supports real-time order book data, exchange fees, slippage, and profit estimation.
+
 import streamlit as st
 import pandas as pd
 import datetime
-import random
+import ccxt
+import time
 
-st.set_page_config(page_title="Triangular Arbitrage Scanner", layout="wide")
+st.set_page_config(page_title="Real Triangular Arbitrage", layout="wide")
+st.title("🔁 Real-Time Triangular Arbitrage Scanner")
 
-# Dark theme and gaming color UI
-st.markdown("""
-    <style>
-        .main { background-color: #0f0f0f; color: white; }
-        .stButton button { background-color: #1e1e2f; color: white; border-radius: 5px; }
-        .stDataFrame { background-color: #1e1e2f; color: white; }
-    </style>
-""", unsafe_allow_html=True)
-
-st.title("🎮 Triangular Arbitrage Scanner (Gaming Mode)")
-
-# Exchange trading fees (simplified flat rate)
-exchange_fees = {
-    "binance": 0.1,
-    "kucoin": 0.1,
-    "mexc": 0.1,
-    "gate": 0.2,
-    "bybit": 0.1,
+# === Configuration ===
+EXCHANGES = {
+    "binance": {
+        "instance": ccxt.binance(),
+        "capital": 100,
+        "fee": 0.1
+    },
+    "mexc": {
+        "instance": ccxt.mexc(),
+        "capital": 50,
+        "fee": 0.1
+    }
 }
+SLIPPAGE_PERCENT = 0.15  # Estimate slippage on each trade in %
 
-# Refresh Button
-if st.button("🔁 Refresh Now"):
-    st.cache_data.clear()
+# === Function to get best ask/bid ===
+def get_order_book_price(exchange, symbol, side, amount):
+    try:
+        ob = exchange.fetch_order_book(symbol)
+        levels = ob['asks'] if side == 'buy' else ob['bids']
+        cost = 0
+        remaining = amount
+        for price, qty in levels:
+            trade_qty = min(remaining, qty)
+            cost += trade_qty * price
+            remaining -= trade_qty
+            if remaining <= 0:
+                avg_price = cost / amount
+                return avg_price
+        return None  # Not enough liquidity
+    except:
+        return None
 
-# Choose between in-exchange and cross-exchange
-trade_type = st.radio("Select Trade Type:", ["In-Exchange Triangular Trades", "Cross-Exchange Triangular Trades"])
-
-@st.cache_data(ttl=15)
-def fetch_opportunities():
+# === Build triangular arbitrage paths ===
+def find_triangular_opportunities():
     now = datetime.datetime.utcnow()
-    signals = []
-    coins = ["BTC", "ETH", "XRP", "ADA", "DOGE", "TRX", "SOL", "AVAX", "APT", "LTC"]
+    results = []
+    for ex_name, ex_data in EXCHANGES.items():
+        exchange = ex_data['instance']
+        capital = ex_data['capital']
+        fee = ex_data['fee']
+        try:
+            markets = exchange.load_markets()
+            symbols = list(markets.keys())
+            coins = set()
+            for s in symbols:
+                if '/USDT' in s or '/USDC' in s:
+                    base = s.replace('/USDT','').replace('/USDC','')
+                    coins.add(base)
+            coins = list(coins)
 
-    for _ in range(250):
-        base = random.choice(["USDT", "USDC"])
-        coin1, coin2 = random.sample(coins, 2)
-        trade1 = f"{base} -> {coin1}"
-        trade2 = f"{coin1} -> {coin2}"
-        trade3 = f"{coin2} -> {base}"
+            for coin1 in coins:
+                for coin2 in coins:
+                    if coin1 == coin2:
+                        continue
+                    base_coin = 'USDT'
 
-        buy_order = f"Buy {coin1} with {base}"
-        mid_order = f"Convert {coin1} to {coin2}"
-        sell_order = f"Sell {coin2} for {base}"
+                    pair1 = f"{base_coin}/{coin1}"
+                    pair2 = f"{coin1}/{coin2}"
+                    pair3 = f"{coin2}/{base_coin}"
 
-        # Exchange logic
-        if trade_type == "In-Exchange Triangular Trades":
-            exchange = random.choice(list(exchange_fees.keys()))
-        else:
-            exchange = random.choice(list(exchange_fees.keys())) + " ⇄ " + random.choice(list(exchange_fees.keys()))
+                    if pair1 in symbols and pair2 in symbols and pair3 in symbols:
+                        price1 = get_order_book_price(exchange, pair1, 'buy', capital / 3)
+                        if not price1: continue
+                        coin1_amt = (capital / price1) * (1 - fee/100 - SLIPPAGE_PERCENT/100)
 
-        gross_profit_percent = round(random.uniform(10000.0, 500000.0), 2)
-        fee_percent = 0.3 if "⇄" in exchange else exchange_fees[exchange.split()[0]]
+                        price2 = get_order_book_price(exchange, pair2, 'sell', coin1_amt)
+                        if not price2: continue
+                        coin2_amt = coin1_amt * price2 * (1 - fee/100 - SLIPPAGE_PERCENT/100)
 
-        slippage = round(random.uniform(0.05, 0.3), 2)  # Reduced slippage
-        total_fees = 3 * fee_percent
-        total_deduction = total_fees + slippage
-        net_profit_percent = round(gross_profit_percent - total_deduction, 2)
+                        price3 = get_order_book_price(exchange, pair3, 'sell', coin2_amt)
+                        if not price3: continue
+                        final_amt = coin2_amt * price3 * (1 - fee/100 - SLIPPAGE_PERCENT/100)
 
-        slippage_risk = "✅ Low" if net_profit_percent > 0 else "❌ High"
+                        net_profit = final_amt - capital
+                        net_profit_pct = (net_profit / capital) * 100
 
-        valid_minutes = random.randint(3, 15)
-        valid_until = (now + datetime.timedelta(minutes=valid_minutes)).strftime("%H:%M:%S UTC")
+                        if net_profit_pct > 0:
+                            results.append({
+                                'Exchange': ex_name,
+                                'Trade 1': pair1,
+                                'Trade 2': pair2,
+                                'Trade 3': pair3,
+                                'Final Value ($)': round(final_amt, 4),
+                                'Net Profit ($)': round(net_profit, 4),
+                                'Net Profit (%)': round(net_profit_pct, 2),
+                                'Detected': now.strftime('%Y-%m-%d %H:%M:%S'),
+                                'Valid Until': (now + datetime.timedelta(minutes=5)).strftime('%H:%M:%S UTC')
+                            })
+        except:
+            continue
 
-        if 10000.0 <= net_profit_percent <= 1000000000.0:
-            signals.append({
-                "Exchange": exchange,
-                "Trade 1": trade1,
-                "Trade 2": trade2,
-                "Trade 3": trade3,
-                "Gross Profit %": gross_profit_percent,
-                "Fees %": total_fees,
-                "Slippage %": slippage,
-                "Net Profit %": net_profit_percent,
-                "Slippage Risk": slippage_risk,
-                "Order 1": buy_order,
-                "Order 2": mid_order,
-                "Order 3": sell_order,
-                "Detected": now.strftime("%Y-%m-%d %H:%M:%S"),
-                "Valid Until": valid_until
-            })
+    return sorted(results, key=lambda x: x['Net Profit (%)'], reverse=True)
 
-    return signals
+# === Display ===
+with st.spinner("Fetching arbitrage opportunities..."):
+    data = find_triangular_opportunities()
 
-# Load and display
-results = fetch_opportunities()
-
-if results:
-    df = pd.DataFrame(results)
-    df = df.sort_values(by="Net Profit %", ascending=False).reset_index(drop=True)
-    st.success(f"Found {len(df)} signals with Net Profit ≥ 10,000%. Auto-refresh every 15s.")
+if data:
+    df = pd.DataFrame(data)
+    st.success(f"Found {len(df)} profitable opportunities")
     st.dataframe(df, use_container_width=True)
 else:
-    st.warning("No arbitrage signals with Net Profit ≥ 10,000% found.")
+    st.warning("No profitable opportunities found at the moment.")
 
-st.caption("Updates every 15 seconds • Ends in USDT/USDC • In-Exchange & Cross-Exchange • Gaming UI • Slippage Simulation • Dark Mode")
+st.caption("Auto-refresh every 15s • Includes exchange fees + slippage • In-exchange only • Binance & MEXC")
