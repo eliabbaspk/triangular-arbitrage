@@ -5,6 +5,7 @@ import random
 
 st.set_page_config(page_title="Triangular Arbitrage Scanner", layout="wide")
 
+# Dark theme and gaming color UI
 st.markdown("""
     <style>
         .main { background-color: #0f0f0f; color: white; }
@@ -15,7 +16,7 @@ st.markdown("""
 
 st.title("🎮 Triangular Arbitrage Scanner (Gaming Mode)")
 
-# Exchange fees
+# Exchange trading fees (simplified flat rate)
 exchange_fees = {
     "binance": 0.1,
     "kucoin": 0.1,
@@ -24,36 +25,41 @@ exchange_fees = {
     "bybit": 0.1,
 }
 
-# Manual refresh button
+# Refresh Button
 if st.button("🔁 Refresh Now"):
     st.cache_data.clear()
 
-# Select trade type
+# Choose between in-exchange and cross-exchange
 trade_type = st.radio("Select Trade Type:", ["In-Exchange Triangular Trades", "Cross-Exchange Triangular Trades"])
 
 @st.cache_data(ttl=15)
 def fetch_opportunities():
     now = datetime.datetime.utcnow()
-    data = []
+    signals = []
     coins = ["BTC", "ETH", "XRP", "ADA", "DOGE", "TRX", "SOL", "AVAX", "APT", "LTC"]
     
-    for _ in range(200):  # Simulate 200 signals
-        exchange = random.choice(list(exchange_fees.keys()))
+    for _ in range(250):
         base = random.choice(["USDT", "USDC"])
         coin1, coin2 = random.sample(coins, 2)
         trade1 = f"{base} -> {coin1}"
         trade2 = f"{coin1} -> {coin2}"
         trade3 = f"{coin2} -> {base}"
         
-        gross_profit = round(random.uniform(2.0, 10.0), 2)
-        fee = exchange_fees[exchange]
-        net_profit = round(gross_profit - (3 * fee), 4)
-
+        # Exchange logic
+        if trade_type == "In-Exchange Triangular Trades":
+            exchange = random.choice(list(exchange_fees.keys()))
+        else:  # Cross-Exchange
+            exchange = random.choice(list(exchange_fees.keys())) + " ⇄ " + random.choice(list(exchange_fees.keys()))
+        
+        gross_profit = round(random.uniform(50.0, 1000.0), 2)  # Simulate high profits
+        fee = 0.3 if "⇄" in exchange else exchange_fees[exchange.split()[0]]
+        net_profit = round(gross_profit - (3 * fee), 2)
+        
         valid_minutes = random.randint(3, 15)
         valid_until = (now + datetime.timedelta(minutes=valid_minutes)).strftime("%H:%M:%S UTC")
         
-        if 2.0 <= net_profit <= 1000.0:
-            data.append({
+        if 50.0 <= net_profit <= 100000.0:
+            signals.append({
                 "Exchange": exchange,
                 "Trade 1": trade1,
                 "Trade 2": trade2,
@@ -64,18 +70,17 @@ def fetch_opportunities():
                 "Valid Until": valid_until
             })
     
-    return data
+    return signals
 
-# Load data
-opportunities = fetch_opportunities()
+# Load and display
+results = fetch_opportunities()
 
-# Display
-if opportunities:
-    df = pd.DataFrame(opportunities)
+if results:
+    df = pd.DataFrame(results)
     df = df.sort_values(by="Net Profit %", ascending=False).reset_index(drop=True)
-    st.success(f"Found {len(df)} opportunities. Auto-refreshes every 15 seconds.")
+    st.success(f"Found {len(df)} signals with Net Profit ≥ 50%. Auto-refresh every 15s.")
     st.dataframe(df, use_container_width=True)
 else:
-    st.warning("No opportunities with Net Profit between 2% and 1000% found.")
+    st.warning("No arbitrage signals with Net Profit ≥ 50% found.")
 
-st.caption("Updated every 15 seconds • Ends in USDT or USDC • Supports In-Exchange & Cross-Exchange • Gaming UI • Dark Mode")
+st.caption("Updates every 15 seconds • Ends in USDT/USDC • Supports In-Exchange & Cross-Exchange • Gaming UI • Dark Mode")
