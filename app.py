@@ -35,17 +35,19 @@ if st.button("🔁 Refresh Now"):
 def fetch_opportunities():
     now = datetime.datetime.utcnow()
     data = []
-    for _ in range(120):  # Simulating 100+ signals
+    coins = ["BTC", "ETH", "XRP", "ADA", "DOGE", "TRX", "SOL", "AVAX", "APT", "LTC"]
+    for _ in range(150):  # Simulating 100+ signals
         ex = random.choice(list(exchange_fees.keys()))
         base = random.choice(["USDT", "USDC"])
-        p1, p2, p3 = f"{base} -> A", "A -> B", f"B -> {base}"
-        gross = round(random.uniform(0.01, 0.5), 2)
+        a, b = random.sample(coins, 2)
+        p1, p2, p3 = f"{base} -> {a}", f"{a} -> {b}", f"{b} -> {base}"
+        gross = round(random.uniform(0.01, 1.5), 2)
         fee = exchange_fees[ex]
         total_fee = 3 * fee
         net = round(gross - total_fee, 4)
         valid_minutes = random.randint(3, 15)
         valid_until = (now + datetime.timedelta(minutes=valid_minutes)).strftime("%H:%M:%S UTC")
-        if net > 0:
+        if net >= 0.9:
             data.append({
                 "Exchange": ex,
                 "Trade 1": p1,
@@ -67,6 +69,6 @@ if data:
     st.success(f"Found {len(df)} opportunities. Auto-refreshes every 15 seconds.")
     st.dataframe(df, use_container_width=True)
 else:
-    st.warning("No profitable arbitrage opportunities found.")
+    st.warning("No arbitrage opportunities with Net Profit ≥ 0.9% found.")
 
 st.caption("Updated every 15 seconds • Ends in USDT or USDC • Same-exchange only or cross-exchange • Gaming UI • Dark Mode")
